@@ -1,0 +1,34 @@
+#!/bin/bash
+# Switch to Tclsh \
+exec /usr/bin/tclsh.exe "$0" "$@"
+
+#OLD: CYGPATH="$0"; PROG=`cygpath -w "$CYGPATH"`; exec /drive/c/opt/Tcl/bin/tclsh85.exe "$PROG" "$@"
+
+set prog [lindex $argv 0]
+
+if { $prog == "" } {
+   puts "Usage [file tail $argv0] <program> \[args...]"
+   exit 1
+}
+
+set args ""
+
+foreach arg [lrange $argv 1 end] {
+	if { [string first / $arg] != -1 } {
+		append args "[string map {\\ \\\\} [exec cygpath -w $arg]] "
+	} else {
+		append args "$arg "
+	}
+}
+
+
+
+set cmd "$prog $args"
+puts "\[run-winapp]: $cmd"
+if { [catch { eval "exec 2>@stderr >@stdout $cmd" } er] } {
+	# Ignore this error currently - it always reports some 1
+	# by unknown reason.
+	#puts "$prog: returned error: $er"
+	#puts "CODE: $errorCode"
+}
+

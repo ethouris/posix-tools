@@ -1,0 +1,443 @@
+#!/usr/local/bin/tclsh8.5
+
+# For testing
+#set argc 1
+#set argv "C:/sektor/papiery/trial.tclml"
+
+set ::g_shoot 0
+
+proc shoot {{arg 1}} {
+	puts stderr "----------- SHOOT [incr ::g_shoot $arg]-----------"
+}
+
+
+if { $argc != 1 } {
+	puts "Invalid usage (please pass tclml filename)"
+	exit 1
+}
+
+set fd [open $argv r]
+set text [read $fd]
+close $fd
+
+# For further outpu file option
+set fd stdout
+
+set g_options(title) "(No title)"
+set g_options(enc) iso-8859-2
+set g_options(link) ""
+set g_options(vlink) ""
+set g_options(bgcolor) ""
+set g_options(icon) ""
+
+# Heading functions
+proc settings args {
+	foreach {opt arg} $args {
+		set found 0
+		foreach option [array names ::g_options] {
+			if { [string match "-$option*" $opt] } {
+				set ::g_options($option) $arg
+				set found 1
+				break
+			}
+		}
+		if { !$found } {
+			error "Unknown option in 'settings' tag: '$opt'"
+		}
+	}
+	return "" ;# must return something to replace text!
+}
+
+# Private utilities
+proc untangle {arg} {
+	if { [llength $arg] == 1 } {
+		return [lindex $arg 0]
+	}
+	return $arg
+}
+
+# Utility formatting functions:
+# b (bold), u (underline), i (italic), em (emphasize)
+# hr (horizontal line), h (heading), n ( <BR> )
+
+proc b args {
+	set args [eval "concat $args"]
+	return "<B>[untangle $args]</B>"
+}
+proc u args {
+	set args [eval "concat $args"]
+	return "<U>[untangle $args]</U>"
+}
+proc i args {
+	set args [eval "concat $args"]
+	return "<I>[untangle $args]</I>"
+}
+proc em args {
+	set args [eval "concat $args"]
+	return "<EM>[untangle $args]</EM>"
+}
+proc n {} { return "<BR>\n" }
+proc link {target args} {
+	set args [eval "concat $args"]
+	if { [string length $args] > 0 } {
+		return "<A HREF=\"$target\">[untangle $args]</A>"
+	} else {
+		set parts [split $target :]
+		set protocol [lindex $parts 0]
+		if { $protocol == "http" || $protocol == "https" } {
+			return "<A HREF=\"$target\">$target</A>"
+		}
+		return "<A HREF=\"$target\">[lindex $parts 1]</A>"
+	}
+}
+
+proc autolink {address} { return [link $address $address] }
+
+#Non-paragraph
+proc nopar {} {
+	set ::parconf(par) 0
+	return ""
+}
+
+proc hr {} {
+	return "\n<HR>"
+}
+
+proc --- {} { return [hr] }
+
+proc h {level args} {
+	nopar
+	
+	set opts ""
+	while { [string index $args 0] == "-" } {
+		set args [lassign $args opt arg]
+		append opts " [string range $opt 1 end]=\"$arg\""
+	}
+
+	set args [eval "concat $args"]
+
+	return "<H$level$opts>$args</H$level>"
+}
+
+set pardeflt(align) "" ; #defaults to left
+set pardeflt(font) ""; # defaults to default
+set pardeflt(par) 1 ; # is a paragraph, that is, requires <P>
+
+proc reset_par {} {
+	array set ::parconf [array get ::pardeflt]
+}
+
+# Paragraph configuration: these functions set appropriate
+# settings for the next paragrapgh
+proc p {args} {
+	foreach {opt arg} $args {
+		if { [string index $opt 0] != "-" } {
+		        error "Malformed 'p' - use -opt val -opt val ..."
+		}
+
+		set opt [string range $opt 1 end]
+		set ::parconf($opt) $arg
+	}
+}
+
+namespace eval int {}
+
+# Variables
+proc $ args {
+
+	set n [llength $args]
+	if { $n < 1 || $n > 2 } {
+		error "Malformed $: should have 1 or 2 arguments"
+	}
+
+	if { $n == 1 } {
+		set var "int::$args"
+		variable $var
+		return [set $var]
+	}
+
+	foreach {var val} $args {}
+	set var "int::$var"
+	variable $var
+	set $var $val
+	return ""
+}
+
+
+
+proc raw< {} { return "!rawhtml!" }
+proc >raw {} { return "!endrawhtml!" }
+
+proc raw {args} {
+	return "[raw<]\n[string map {%amp% & %lt% < %gt% >} $args][>raw]"
+}
+
+proc rawbegin {} {
+	set ::g_process_raw 1
+	return
+}
+
+proc rawend {} {
+	set ::g_process_raw 0
+	return
+}
+
+
+# Allright. In 'text' there is the text to be parsed.
+
+# Split for paragraphs.
+
+set text [string map {| !pipereplacedhere! } $text]
+set text [string map {\n\n |} $text]
+
+set parlist [split $text |]
+set parlist [string map {!pipereplacedhere! |} $parlist]
+
+#puts $parlist
+#exit
+
+set htmlparlist {}
+
+set g_state 0
+set g_state_option ""
+
+set g_process_raw 0
+
+proc switch_state {type {option {}} } {
+	set previous $::g_state
+	set current $type
+
+	set direction [expr {$current-$previous}]
+	if { $direction == 0 } return
+	set descending [expr {$direction > 0}]
+	if { $descending && $direction != 1 } {
+		error "Invalid level in descending!"
+	}
+
+	set ::g_state $current
+
+	set addition {}
+
+	if { $descending } {
+		lappend ::g_state_option $option
+		while 1 {
+			switch -- $option {
+				- { append addition "<UL>\n" }
+				1 { append addition "<OL type=1>\n" }
+				a { append addition "<OL type=a>\n" }
+				default { append addition "<OL>\n" }
+			}
+			incr previous
+			if { $previous == $current } {
+				break
+			}
+		}
+	} else {
+		while 1 {
+			set state [lindex $::g_state_option end]
+			set ::g_state_option [lrange $::g_state_option 0 end-1]
+			if { $state == "-" } {
+				append addition "</UL>\n"
+			} else {
+				append addition "</OL>\n"
+			}
+			incr previous -1
+			if { $previous == $current } {
+				break
+			}
+		}
+	}
+	return $addition
+}
+
+proc processlines text {
+	set lines [split $text \n]
+
+	switch_state 0
+
+	set addition {}
+	set linesout {}
+	
+	foreach line $lines {
+		# Cut off line with comment
+		if { [string index $line 0] == "#" } {
+		    continue
+		}
+
+		set continue_last 0
+
+		if { [string range $line 0 2] == "   " } {
+			set line [string range $line 3 end]
+			set base 1
+			while 1 {
+				set probe [string range $line 0 1]
+				set line [string range $line 2 end]
+				switch -exact -- $probe {
+					"* " {
+						set addition [switch_state $base -]
+					}
+
+					"1." {
+						set addition [switch_state $base 1]
+					}
+					"a." {
+						set addition [switch_state $base a]
+					}
+					"A." {
+						set addition [switch_state $base A]
+					}
+					"  " {
+						incr base
+						continue
+					}
+				}
+				
+				break
+			}
+		} else {
+			#set addition [switch_state 0]
+			set continue_last 1
+		}
+
+		if { $::g_state > 0 && !$continue_last} {
+			set line "<LI>$line\n"
+		}
+		
+		lappend linesout $addition$line
+	}
+
+	set finalline [switch_state 0]
+	if { $finalline != "" } {
+		lappend linesout $finalline
+	}
+
+	return $linesout
+}
+
+
+foreach par $parlist {
+	
+	if { $::g_process_raw } {
+		# if so, do not process anything.
+		# in raw mode all commands must not break a line
+		# and original EOLs are saved
+
+		set fail [catch {subst -novariables $par} result]
+		if { $fail } {
+			puts stderr "***ERROR; Going to substitute:"
+			puts stderr "---------"
+			puts stderr $par
+			puts stderr "---------"
+			puts stderr $result
+			continue
+		}
+
+		append result \n ;# add the original end-of-line
+		lappend ::htmlparlist $result
+		continue
+	}
+	
+	# First, replace illegal HTML characters
+
+	set par [string map {& %amp%} $par]
+	set par [string map {< %lt% > %gt% ; %scolon%} $par]
+	
+	set linesout [processlines $par]
+	set par [join $linesout " "] ; # to prevent errors due to \n in command
+
+	reset_par
+	# Then, evaulate commands in the paragraph
+	# set result [subst -novariables $par]
+
+
+	set fail [catch {subst -novariables $par} result]
+ 	if { $fail } {
+ 		puts stderr "***ERROR"
+ 		puts stderr "Going to substitute:"
+ 		puts stderr "---------"
+ 		puts stderr $par
+ 		puts stderr "---------"
+ 		puts stderr $result
+ 		continue
+ 	}
+
+	set par [string trim $result]
+
+	# Skip empty paragraphs
+	if { $par == "" } continue 
+
+	set par [string map {%amp% &amp; %lt% &lt; %gt% &gt; %scolon% ; { - } { &ndash; }} $par]
+
+
+	set paropt {}
+	
+	if { $::parconf(par) } {
+		foreach opt [array names ::parconf] {
+		        if { $opt == "par" } continue
+
+		        if { $::parconf($opt) != "" } {
+		                append paropt " $opt=\"$::parconf($opt)\""
+		        }
+		}
+		set rawpos [string first [raw<] $par]
+		set rawonly 0
+		if { $rawpos != -1 } {
+			set endrawpos [string first [>raw] $par]
+			# shift the endrawpos to the end of match string
+			# to verify if it would be end in this case (PAST-THE-END!)
+			incr endrawpos [string length [>raw]]
+			set rawonly [expr $rawpos == 0 && $endrawpos == [string length $par]]
+			set par [string map [list [raw<] "" [>raw] ""] $par]
+		}
+
+		if { $rawonly } {
+			lappend ::htmlparlist "\n$par\n"
+		} else {
+			lappend ::htmlparlist "<P$paropt>\n$par"
+		}
+	} else {
+		lappend ::htmlparlist $par
+	}
+
+
+}
+
+# Produce output html text
+
+
+puts $fd "<HTML>\n<HEAD>"
+
+# Title
+puts $fd "<TITLE>$g_options(title)</TITLE>"
+
+# Encoding
+puts $fd "<META HTTP-EQUIV=Content-type CONTENT=\"text/html; charset=$g_options(enc)\">"
+
+# Icon path
+if { $::g_options(icon) != "" } {
+	puts $fd "<LINK REL=\"shortcut icon\" HREF=\"$::g_options(icon)\">"
+}
+
+# Build body options
+
+proc addoption {where which} {
+	upvar $where optlist
+	if { $::g_options($which) != "" } {
+		append optlist " [string toupper $which]=\"$::g_options($which)\""
+	}
+}
+
+set bodyoptions ""
+addoption bodyoptions link
+addoption bodyoptions vlink
+addoption bodyoptions bgcolor
+
+puts $fd "</HEAD><BODY$bodyoptions>"
+
+foreach par $htmlparlist {
+	puts $fd $par
+}
+
+puts $fd "</BODY></HTML>"
+
+# vim: ft=tcl

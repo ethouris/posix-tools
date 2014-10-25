@@ -1,0 +1,31 @@
+#!/bin/bash
+
+CMD="pkg-config "
+
+for i in "$@"; do
+	#echo "ARG: $i"
+	ARG=`echo \'$i\' | tr '\n' ' '`
+	CMD="$CMD $ARG"
+done
+
+echo "$CMD" >>/tmp/pkg-config-install.log
+
+pkg-install --config "$@"
+
+
+# 
+# PKGS=""
+# OPTS=""
+# 
+# for i in "$@"; do
+# 	case $i in
+# 		--*) OPTS="$OPTS $i" ;;
+# 		*) PKGS="$PKGS $i" ;;
+# 	esac
+# done
+# 
+# OUT=""
+# for i in $PKGS; do
+# 	OUT="$OUT `pkg-install --config $OPTS $i`"
+# done
+# echo $OUT

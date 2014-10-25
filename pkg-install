@@ -1,0 +1,698 @@
+#!/bin/bash
+# restart with tclsh \
+exec tclsh "$0" "$@"
+
+package require Tcl 8.5
+
+set tmpdir /var/tmp/pkg-install
+
+set extractor(.gz) {tar xfz}
+set extractor(.bz2) {tar xfj}
+set extractor(.lzma) {tar xf --lzma}
+
+# First check existence in pkg-config
+
+set vcmpoption(=) exact
+set vcmpoption(<=) max
+set vcmpoption(>=) atleast
+
+proc pkg_exists {name version} {
+	global errorCode errorInfo
+	set version [string trim $version]
+
+	if { $version != "" } {
+		#puts stderr "\n *D* VERSION: '$version'"
+		if { [llength $version] == 1 } {
+			set version ">= $version"
+		}
+		set kw $::vcmpoption([lindex $version 0])
+		set versionstring "--${kw}-version=[lindex $version 1]"
+	} else {
+		set versionstring ""
+	}
+
+	if { [catch "exec pkg-config --exists $name $versionstring 2>/dev/null"] } {
+		lassign $errorCode code proc result
+		set descr $errorInfo
+		if { $code == "CHILDSTATUS" && $result == "1" } {
+			return no
+		}
+		error $descr
+	}
+
+	return yes
+}
+
+# Call yourself for another package
+proc pkg_install {name} {
+	global errorCode errorInfo
+
+	if { [catch "exec pkg-install $name 2>@stderr >@stdout"] } {
+		lassign $errorCode code proc result
+		set descr $errorInfo
+		if { $code == "CHILDSTATUS" && $result == "1" } {
+			return no
+		}
+		error $descr
+	}
+
+	return yes
+}
+
+proc env name {
+	if { ![info exists ::env($name)] } {
+		return ""
+	}
+
+	return $::env($name)
+}
+
+proc read_config lines {
+
+	# Import all environment variables into local variables
+	# so that they can be used in file
+
+	foreach {ek ev} [concat [array get ::env] [array get ::gvars]] {
+		set $ek $ev
+	}
+	unset ek
+	unset ev
+
+	set tmp_text ""
+	array set data {}
+	foreach l $lines {
+		set l [string trim $l]
+		if { $l == "" || [string index $l 0] == "#" } {
+			continue
+		}
+		if { [regexp {(^[a-zA-Z]*):(.*)} $l dum key val] } {
+			set data($key) [string trim $val]
+			set text ""
+			continue
+		}
+		if { [regexp {(^[a-zA-Z]*) *= *(.*)} $l dum name val] } {
+			if { [catch {subst -nocommands $val} val] } {
+				# Don't set a variable if already found in ::gvars
+				if { ![info exists ::gvars($name)] } {
+					set $name $val
+				}
+			}
+		}
+		append text "\n$l"
+	}
+
+	foreach {l v} [array get data] {
+		if { [catch {subst -nocommands $v} data($l)] } {
+			puts stderr "Warning: leaving irresolved $v"
+			set data($l) $v
+		}
+	}
+
+	#parray data
+
+	return [array get data]
+}
+
+proc strip0 s {
+	set ix 0
+	while { [string index $s $ix] == "0" } {
+		incr ix
+	}
+	set cut [string range $s $ix end]
+
+	if { $cut == "" } {
+		return 0
+	}
+	return $cut
+}
+
+proc vcompare {a b} {
+
+	if { $a == $b } {
+		return 0
+	}
+
+	set re_digitalpha {([0-9]+)([a-zA-Z]*)}
+	set re_alphadigit {([a-zA-Z]+)([0-9]*)}
+
+	# First, equalize all by dots.
+
+	set ap [split $a .]
+	set bp [split $b .]
+
+	set dif [expr [llength $bp] - [llength $ap]]
+	set toext ""
+
+	if { $dif > 0 } {
+		set toext bp
+	} elseif { $dif < 0 } {
+		set dif [expr {-$dif}]
+		set toext ap
+	}
+
+	if { $toext != "" } {
+		lappend $toext {*}[lrepeat $dif 0]
+	}
+
+	# Now compare by segments
+
+	foreach as $ap bs $bp {
+		set ad { 0 "" }
+		set bd { 0 "" }
+		if { [regexp $re_digitalpha $as nun digit alpha] } {
+			set ad [list [strip0 $digit] $alpha]
+		}
+
+		if { [regexp $re_digitalpha $bs nun digit alpha] } {
+			set bd [list [strip0 $digit] $alpha]
+		}
+
+		if { [lindex $ad 0] < [lindex $bd 0] } {
+			return -1
+		}
+
+		if { [lindex $ad 0] > [lindex $bd 0] } {
+			return 1
+		}
+
+		# If numbers are equal, check strings
+
+		set cmp [string compare [lindex $ad 1] [lindex $bd 1]]
+		if { $cmp != 0 } {
+			return $cmp
+		}
+
+		# If they are equal, leave them and check the next pair.
+	}
+
+	return 0 ; # if all digits were equal, even with leading zeros, they are equal
+}
+
+proc glew_requirements tokens {
+	set tokens [string map {, " "} $tokens]
+	set lastreq ""
+	set operator ""
+	set requirements ""
+
+	foreach tok $tokens {
+		if { $operator != "" } {
+			set req "$lastreq $operator $tok"
+			lappend requirements $req
+			set lastreq ""
+			set operator ""
+			continue
+		}
+
+		if { $tok in {= <= >=} } {
+			set operator $tok
+			continue
+		}
+
+		if { $lastreq != "" } {
+			lappend requirements $lastreq
+		}
+		set lastreq $tok
+	}
+
+	if { $lastreq != "" } {
+		lappend requirements $lastreq
+	}
+
+	return $requirements
+}
+
+proc install_from_package {pkg_name pkg_version} {
+	global tmpdir config
+	if { ![info exists config(Package)] } {
+		puts stderr "No Package: entry found in $config(pd) file. Can't install from package."
+		return false
+	}
+
+	puts stderr "Running: $config(Package)"
+	set exc [catch {exec bash -cx "$config(Package)" 2>@stderr >@stdout <@stdin}]
+	if { $exc } {
+		puts stderr "pkg-install: ***Error installing package $pkg_name."
+		exit 1
+	}
+	return true
+}
+
+proc install_from_source {pkg_name pkg_version} {
+	global  tmpdir config
+
+	if { [info exists config(Location)] } {
+		set location $config(Location)
+	} elseif { [info exists config(Download)] } {
+		# Harder, but still possible.
+		# Download into a temporaray directory, extract, give the location
+
+		set tmp [file join $tmpdir ${pkg_name}-$pkg_version]
+
+		file mkdir $tmp
+		cd [file normalize $tmp]
+
+		exec wget -c $config(Download) 2>@stderr >@stdout
+		set file [file tail $config(Download)]
+		set ext [file extension $file]
+
+		eval [concat exec $::extractor($ext) $file 2>@stderr >@stdout]
+
+		# Dunno, what directory it extracted. Should be only one,
+		# so check the first one.
+
+		set dirs [glob *]
+
+		# Take out the archive file name
+
+		set ix [lsearch $dirs $file]
+		set dirs [lreplace $dirs $ix $ix]
+		puts stderr DIRS:$dirs
+
+		if { [llength $dirs] > 1 } {
+			puts stderr "Download: more than one entry after extraction. Dunno what to do."
+			puts stderr "Package extracted at $tmp"
+			puts stderr "You can fix manually this one and put this at Location: in place of Download:"
+			exit 1
+		}
+
+		set location [file join $tmp $dirs]
+	} else {
+		puts stderr "No Download: or Location: found in $config(pd) file. Can't install from source."
+		return false
+	}
+
+	# And finally, execute compile command and expect that it install the package.
+
+	if { ![file isdir $location] } {
+		set path [glob -nocomplain $location]
+		if { $path == "" } {
+			puts stderr "Not a directory and not a pattern: $location"
+			return false
+		}
+
+		if { [llength $path] != 1 } {
+			puts stderr "More than one directory matches '$location'"
+			return false;
+		}
+
+		set location $path
+	}
+	cd [file normalize $location]
+	puts stderr "Going to install $pkg_name from sources at [pwd]"
+	set exc [catch {exec bash -cx "$config(Install)" 2>@stderr >@stdout}]
+	if { $exc } {
+		puts stderr "pkg-install: ***Error installing package $pkg_name."
+		exit 1
+	}
+	return true
+}
+
+proc get_pkg_config_path {} {
+	# Try path from PKG_CONFIG_PATH; fallback to path of pkg-config
+	set pkg_config_path [split [env PKG_CONFIG_PATH] :]
+	if { $pkg_config_path == "" } {
+		set pref [exec bash -c "type -p pkg-config"]
+		set pref [string map {/bin/pkg-config ""} $pref]
+
+		set pkg_config_path [file join $pref lib pkgconfig]
+		# puts stderr "No PKG_CONFIG_PATH - falling back to $pkg_config_path"
+	}
+
+	return $pkg_config_path
+}
+
+proc see_package {pkg_name pkg_version} {
+	set ::pkg_name $pkg_name
+	set ::pkg_version $pkg_version
+	#puts stderr "\n *D* SEEING: package='$pkg_name' version='$pkg_version'"
+
+	global options
+
+	set ::gvars(pkg_name) $pkg_name
+	set ::gvars(pkg_version) $pkg_version
+	array unset ::config
+
+	# If package has pkg-config entry, it's treated as already installed.
+	# Unless --force.
+	if { ![info exists options(--force)] && [pkg_exists $pkg_name $pkg_version] } {
+		if { [info exists options(--config)] } {
+			set ::need_continue_pkgconfig yes
+			return 0
+		}
+		puts stderr "Package '$pkg_name' already installed"
+		return 0
+	}
+
+	if { [info exists options(--config)] } {
+		puts stderr "'$pkg_name' not found, trying to install"
+	}
+
+	# Find .pd file and try to perform installation
+
+	set pkg_config_path [get_pkg_config_path]
+	set location ""
+	set fallback no
+
+	foreach p $pkg_config_path {
+		# puts stderr "Trying $p..."
+		set loctotry [file join $p ${pkg_name}.pd]
+		if { [file exists $loctotry] } {
+			set location $loctotry
+			break
+		}
+	}
+
+	if { $location == "" } {
+		foreach p $pkg_config_path {
+			# puts stderr "Trying $p..."
+			set loctotry [file join $p pkg-install-fallback.pd]
+			if { [file exists $loctotry] } {
+				set location $loctotry
+				set fallback yes
+				break
+			}
+		}
+	}
+
+	if { $location == "" } {
+		if { [info exists options(--config)] } {
+			#puts stderr "(pkg-install)\nOptions: [array get ::options]. Pkg-config options: $::pkgconfig_options"
+		}
+		puts stderr "Package '$pkg_name' not found and don't know how to make it."
+		puts stderr "The best if the package is described in ${pkg_name}.pd file."
+		puts stderr "Type [file tail $::argv0] --help-pd to get known how to provide it."
+		return 1
+	}
+
+	# Remember location, you'll use it for $prefix
+
+	# /usr/lib/pkgconfig/packagename.pd
+	#      e-2   end-1      end 
+
+	# Set fallback prefix
+	set prefix [file join {*}[lrange [file split $location] 0 end-3]]
+	if { $prefix == "" } {
+		set prefix /usr/local
+	}
+
+	# Got pd, read and interpret it.
+
+	puts stderr "Trying to install from $location"
+	set lines [split [exec cat $location] "\n"]
+
+	array set ::config [read_config $lines]
+	set ::config(pd) $location
+
+	# Skip requirements if fallback method was used (that is,
+	# not from *.pd file, but from pkg-install-fallback.pd file)
+	if { ! $fallback } {
+		# Now walk requirements and recursively call yourself
+
+		# First parse requirements
+
+		set requirements ""
+
+		if { [info exists config(Requires)] } {
+			set requirements [glew_requirements $config(Requires)]
+		}
+
+		# Now check every requirement whether it's satisfied.
+		# Just call pkg-install for each of them.
+
+		foreach r $requirements {
+			puts -nonewline stderr "Checking prerequisite: $r... "
+
+			set name [lindex $r 0]
+			set verr [lrange $r 1 end]
+
+			if { ![pkg_exists $name $verr] } {
+				puts stderr "not found, installing"
+				if { ![pkg_install $name] } {
+					puts stderr "pkg-install: $pkg_name: prerequisite '$name' failed, bailing out"
+					return 1
+				}
+
+				# Package installed, check by pkg-config again
+				if { ![pkg_exists $name $verr] } {
+					puts stderr "pkg-install: $pkg_name: Installation didn't satisfy '$r'."
+					return 1
+				}
+			} else {
+				puts stderr "Ok"
+			}
+		}
+	}
+
+	# Ok, now that all prerequisites are satisfied, install the package itself.
+
+	# Prefer installing from distribution.
+	# Install from source, if there's no Pacakge: entry.
+	# If --source or --package options are given:
+	#   - prefer installing from the selected medium
+	#   - fail, if can't install from preferred medium
+
+	set try_other yes
+	set medium package
+	if { [info exists options(--source)] } {
+		set try_other no
+		set medium source
+	}
+
+	if { [info exists options(--package)] } {
+		set try_other no
+		set medium package
+	}
+
+	if { $medium == "package" } {
+		if { ![set success [install_from_package $pkg_name $pkg_version]] && $try_other } {
+			set success [install_from_source $pkg_name $pkg_version]
+		}
+	} elseif { $medium == "source" } {
+		if { ![set success [install_from_source $pkg_name $pkg_version]] && $try_other } {
+			set success [install_from_package $pkg_name $pkg_version]
+		}
+	}
+
+	if { !$success } {
+		puts stderr "pkg-install: No medium found to install package '$pkg_name'."
+		puts stderr "The best if the package is described in ${pkg_name}.pd file."
+		puts stderr "Type [file tail $::argv0] --help-pd to get known how to provide it."
+		return 1
+	}
+
+	if { [info exists options(--config)] } {
+		set ::need_continue_pkgconfig yes
+	}
+
+	return 0
+}
+
+
+proc continue_pkgconfig {} {
+	set pkg_config_cmdline "exec pkg-config $::pkgconfig_options $::argvi"
+#puts stderr "\n*D* Running pkg-config: $pkg_config_cmdline"
+		set fail [catch $pkg_config_cmdline val]
+		if { [string index $val end] == "\n" } {
+			set val [string range $val 0 end-1]
+		}
+	if { $val != "" } {
+		puts $val
+	}
+	if { $fail } {
+		exit 1
+	}
+	exit 0
+}
+
+proc usage {page} {
+	if { $page == "" } {
+
+		puts stderr "Usage: [file tail $::argv0] <package name or --option or variable=value>..."
+		puts stderr "Options:"
+		puts stderr "    --source  - Force installing from sources (use Download, Location, Install)"
+		puts stderr "    --package - Force installing from packaging system (use Package)"
+		puts stderr "    --force   - Force installing package even if *.pc file is found"
+		puts stderr "    --config  - Interpret rest of args as options for pkg-config and call"
+		puts stderr "                pkg-config with these options when package is installed"
+		puts stderr "Help pages:"
+		puts stderr "    --help    - general"
+		puts stderr "    --help-pd - how to provide package definition"
+		exit 1
+	}
+
+	switch -- $page {
+		pd {
+
+			set pkg_config_path [get_pkg_config_path]
+			puts stderr "
+To help pkg-install make the package installed, it needs a package descriptor
+file *.pd (similar to *.pc) file. It should be located in any of:
+$pkg_config_path
+that is, the same directory where the *.pc file should reside.
+It's best that it is prepared with the use of the *.pc file from this package,
+at least to have the 'Requires:' field that defines dependencies.
+
+The pkg-install tool can provide the required package by following methods:
+1. PACKAGE: Use the local packaging system to install from package.
+2. SRC-LOCAL: Install from source, where the source dir resides locally.
+3. SRC-REMOTE: Download the sources, unpack, then like SRC-LOCAL.
+
+Default is to use PACKAGE method, with SRC as fallback.
+Any of PACKAGE or SRC method can be forced (with no fallback) by
+using --package or --source options for pkg-install respectively.
+
+Methods for installing to be implemented:
+1. PACKAGE: add 'Package: <cmd>' (should use local packaging system)
+2. SRC-LOCAL: add 'Location: <dir>' and 'Install: <cmd>'
+3. SRC-REMOTE: add 'Download: <url>' and 'Install: <cmd>'
+
+where:
+ <cmd> - command to make the package installed.
+ <dir> - local directory that contains sources to be compiled
+ <url> - URL to be used by wget to download the sources (it's then
+         automatically extracted to a temporary location)
+
+Note that <cmd> command:
+ - is not allowed to interact with user unless to ask for password
+ - it must in final result put *.pc file in any of:
+$pkg_config_path
+or otherwise the command will fail anyway. If the command is going to
+REALLY install the package, but it will not install the *.pc file, make
+some additional instructions so that the *.pc file is provided.
+"
+		}
+
+		default {
+			puts stderr "Unknown help page '$page'"
+		}
+	}
+
+	exit 1
+}
+
+################ MAIN #################
+
+set argvi ""
+array set gvars {}
+array set options {}
+set pkgconfig_options {}
+set was_config 0
+set grab_value 0
+set last_option ""
+
+foreach arg $argv {
+	if { [regexp {([a-zA-Z]+)=(.*)} $arg unu name val] } {
+		set gvars($name) $val
+		continue
+	}
+
+	if { [string match --* $arg] } {
+		#puts "*D option: $arg"
+
+		if { [string match "--help*" $arg] } {
+			usage [string range $arg 7 end]
+		}
+
+		# Handle correctly pkg-config valued options
+		if { [string match *version $arg] } {
+			set grab_value 1
+			set last_option $arg
+		}
+
+		if { $was_config } {
+			lappend pkgconfig_options $arg
+			continue
+		}
+		if { [regexp {(--[a-zA-Z-]+)=(.*)} $arg unu opt val] } {
+			set options($opt) $val
+		} else {
+			set options($arg) ""
+			
+		}
+
+		# "config" option means that rest of the options are destined
+		# to pkg-config
+		if { $arg == "--config" } {
+			set was_config 1
+		}
+
+		continue
+	}
+
+	if { $grab_value } {
+		set grab_value 0
+		if { [info exists options($last_option)] } {
+			set options($last_option) $arg
+		} else {
+			lappend pkgconfig_options $arg
+		}
+		continue
+	}
+
+	lappend argvi $arg
+}
+
+if { $argvi == "" } {
+
+	# Don't guard arguments when pkg-config was required
+	if { [info exists options(--config)] } {
+		continue_pkgconfig
+	}
+
+	puts stderr "Usage: [file tail $argv0] <package name or --option or variable=value>..."
+	exit 1
+}
+
+set ok 1
+
+set packages {}
+set prev ""
+
+if { [llength $argvi] == 1 } {
+	set argvi [lindex $argvi 0]
+}
+
+if { [string first "\n" $argvi] != -1 } {
+	set argvi [split $argvi \n]
+}
+
+
+#puts stderr "\n*D* ARGS: [join $argvi ~]"
+
+set l [llength $argvi]
+for {set i 0} {$i < $l} {incr i} {
+	set p [lindex $argvi $i]
+	if { $p in [array names ::vcmpoption] } {
+		# This means that the 'package >= 2.0' syntax is used.
+		# Next $p then will be the version spec.
+		if { $i == 0 } {
+			error "Invalid syntax: '$p' without package name"
+		}
+		set pkg [lindex $packages $i-1]
+		#puts stderr "*D*[expr {$i-1}] (len [llength $packages])"
+		lset packages [expr {$i-1}] [list $pkg $p [lindex $argvi $i+1]]
+		incr i
+		continue
+	}
+	lappend packages $p
+}
+
+foreach p $packages {
+	set p [string trim $p]
+	if { $p == "" } continue
+	#puts stderr "\n *D* PKGSPEC: '$p'"
+	lassign $p pkg vcmp version
+	set ok [expr {[see_package $pkg "$vcmp $version"] && $ok}]
+}
+
+# Use fixed list of packages for pkg-config
+
+if { [info exists options(--config)] } {
+	set argvi $packages
+	continue_pkgconfig
+}
+
+exit $ok
+
+
+# vim:ft=tcl

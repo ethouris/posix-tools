@@ -1,0 +1,46 @@
+#!/bin/bash
+# Restart with wish: \
+exec wish86 $(cygpath -w $0) "$@"
+
+package require Tk 8.5
+package require Ttk
+
+set filename [lindex $argv 0]
+if { $filename == "" } {
+	puts "Usage: [file tail $argv0] <file to rename>"
+	exit 1
+}
+
+if {![file exists $filename] } {
+	puts "Error: file not found"
+	exit 1
+}
+
+entry .e
+frame .b
+button .b.ok -text "Ok" -command do_rename
+button .b.cancel -text "Cancel" -command exit
+
+bind .e <Key-Return> do_rename
+bind .e <Key-Escape> exit
+
+pack .e .b
+pack .b.ok .b.cancel -side left
+
+.e insert end $filename
+
+wm geometry . "+500+500"
+focus .e
+
+proc do_rename {} {
+	set new_name [.e get]
+	if { $new_name == $::filename } {
+		puts "Name not changed."
+		exit 0
+	}
+
+	file rename $::filename $new_name
+	puts "Renamed '$::filename' to '$new_name'"
+	exit 0
+}
+

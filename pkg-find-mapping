@@ -1,0 +1,52 @@
+#!/usr/bin/tclsh8.5
+
+if { $argv == "" } {
+	error "No package to find?"
+}
+
+set here [file dirname $argv0]
+set conf [file join $here .. etc pkg-install-map.conf]
+
+set fd [open $conf r]
+set confest [read $fd]
+close $fd
+
+foreach e [split $confest \n] {
+	set pkg([lindex $e 0]) [lrange $e 1 end]
+}
+
+if { [info exists pkg($argv)] } {
+	puts $pkg($argv)
+	exit 0
+}
+
+# If not, try to fallback to apt-file
+
+# XXX Blocked fallback to apt-file: it's too complicated and
+# takes too much time.
+# if { ![catch {set aptfile [exec which apt-file]}] } {
+# 	exec >@stderr 2>@stderr $aptfile update
+# 	set mappings [split [exec $aptfile search ${argv}.pc] \n]
+# 
+# 	foreach m $mappings {
+# 		lassign [split $m :] pk file
+# 		set file [string trim $file]
+# 		if { [string match */${argv}.pc $file] } {
+# 			puts $pk
+# 			exit 1
+# 		}
+# 	}
+# 	
+# }
+
+
+puts stderr "[file tail $argv0]: $argv not found"
+puts stderr "NOTE:
+As your pkg-install is configured to use [file tail $argv0] to find package
+that provides '$argv', you can help it by adding the mapping to this file:
+[file normalize $conf]
+Alternatively, you can modify the way how package is being found by changing
+the entries in pkg-install-fallback.pd file."
+exit 1
+
+# vim: ft=tcl
