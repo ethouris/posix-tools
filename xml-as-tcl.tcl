@@ -84,6 +84,14 @@ proc enclose {text} {
 	return "\"$text\""
 }
 
+proc comment-out-block {block spaces} {
+	set out ""
+	foreach ln [split $block \n] {
+		append out "$spaces# [string trim $ln]\n"
+	}
+	return $out
+}
+
 proc domAsTclNode {node indent} {
 	# Process contents of the current node
 
@@ -108,7 +116,8 @@ proc domAsTclNode {node indent} {
 # 	}
 
 	if { $name == "#comment" } {
-		return "\n$ispaces#$attr\n"
+		set cattr [comment-out-block $attr $ispaces]
+		return \n$cattr\n
 	}
 
 	set target $ispaces$name

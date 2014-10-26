@@ -1,0 +1,20 @@
+#!/bin/bash
+
+OPTIONS=""
+
+for i in "$@"; do
+	case $i in
+		-*)
+			OPTIONS+=" $i"
+		;;
+		*.o|*.so*)
+			echo "/.a:"; echo; echo $i:
+		;;
+
+		*.a)
+			echo $i:
+		;;
+	esac
+	nm $OPTIONS $i
+	echo
+done

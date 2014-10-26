@@ -1,0 +1,6 @@
+#!/bin/bash
+
+OPTIONS=`uname --help 2>&1 | grep -- -- | cut -d " " -f 4`
+for o in $OPTIONS; do
+	echo -e "\t$o\t`uname $o`"
+done

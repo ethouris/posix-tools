@@ -1,0 +1,12 @@
+#!/usr/bin/tclsh
+
+set filename [lindex $argv end]
+set options [lrange $argv 0 end-1]
+
+proc runecho args {
+	puts ">>> $args"
+	exec 2>@stderr >@stdout {*}$args
+}
+
+runecho tar "--use-compress-program=[string range [file extension $filename] 1 end]" -xf {*}$options $filename
+

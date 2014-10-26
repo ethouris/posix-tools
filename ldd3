@@ -12,7 +12,11 @@ proc ldextract {lddso} {
         if { [string match "* => *(0x*)" $l] } {
             set name [lindex $l 0]
             #set ::ldmap($name) ""
-            set ::ldfile($name) [lindex $l 2]
+			set filename [lindex $l 2]
+			if { [string match "(0x*" $filename] } {
+				set filename "<system>"
+			}
+            set ::ldfile($name) $filename
         } else {
             set name [lindex $l 0]
             set ::ldfile($name) ?$name
@@ -56,42 +60,40 @@ proc display_ldmap_pre file {
     return $output
 }
 
-proc ldd3 {file} {
-	
-	if { [string index $file 0] == "?" } {
-		return "--- NOT FOUND ---"
-	}
-	if { [catch {set lddso [exec ldd $file 2>@stderr]} result] } {
-		set ldlist [ldextract $result]
-	} else {
-    	set ldlist [ldextract $lddso]
-	}
-    set output ""
-    #append output "(((LDD3 $file)))\n"
+proc ldd3 {args} {
 
-    foreach l $ldlist {
-        set file $::ldfile($l)
-        if { $file == "not" } {
-            append output "$l: -------NOT-FOUND--------\n"
-        } else {
-            append output "$l: $file"
-			#puts "APPENDING ldmap for $file"
-			if { [info exists ::ldcache($file)] } {
-				if { $::ldcache($file) == "" } {
-					append output " (cyclic dep!)\n"
-				} else {
-					append output " (cached)\n"
-				}
-			} else {
-				append output \n[display_ldmap_pre $file]
-			}
-        }
-    }
+	set output ""
+	foreach file $args {
+		if { [string index $file 0] == "?" } {
+			return "--- NOT FOUND ---"
+		}
+    	if { [catch {set lddso [exec ldd $file 2>@stderr]} result] } {
+    		set ldlist [ldextract $result]
+    	} else {
+    		set ldlist [ldextract $lddso]
+    	}
+    	#append output "(((LDD3 $file)))\n"
 
-    return $output
+    	foreach l $ldlist {
+    		set file $::ldfile($l)
+    		if { $file == "not" } {
+    			append output "$l: -------NOT-FOUND--------\n"
+        	} else {
+				append output "$l: $file"
+				#puts "APPENDING ldmap for $file"
+        		if { [info exists ::ldcache($file)] } {
+        			append output " (cached)\n"
+        		} else {
+        			append output \n[display_ldmap_pre $file]
+        		}
+        	}
+    	}
+	}
+
+	return $output
 }
 
 interp recursionlimit {} 100
 
-puts [ldd3 $argv]
+puts [ldd3 {*}$argv]
 

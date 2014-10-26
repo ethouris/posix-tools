@@ -1,0 +1,41 @@
+#!/usr/bin/tclsh
+
+set storefile $env(HOME)/.local/etc/yakuake.ini
+set tmpfile $env(HOME)/yakuake.ini
+
+set debug [lindex $argv 0]
+if { $debug != "" } {
+	proc log arg { puts stderr $arg }
+} else {
+	proc log arg {}
+}
+
+while 1 {
+	
+	after [expr 60*1000]
+	# roll until killed. To be newly started manually.
+
+	if { ![file exists $tmpfile] } {
+		continue
+	}
+
+	log "Picking up yakuake.ini..."
+
+	if { [file exists $storefile] } {
+		log "Found old one."
+		# Check mtime diff.
+		set tmptm [file mtime $tmpfile]
+		set storetm [file mtime $storefile]
+
+		# If time diff is less than 5 minutes
+		if { $tmptm - $storetm < 5*60 } {
+			file rename -force $tmpfile $storefile
+			log "Young enough, replacing."
+		}
+	} else {
+		# If store file does not exist, move anyway
+		file rename $tmpfile $storefile
+		log "Old not found. Moving anyway"
+	}
+}
+

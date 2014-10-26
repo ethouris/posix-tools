@@ -1,0 +1,66 @@
+#!/usr/bin/tclsh
+
+proc localize {cwd path} {
+
+	if { [file pathtype $path] == "relative" } {
+		return $path
+	}
+
+	set localcomp [file split $cwd]
+	set path [file normalize $path] ;# for any case, skip any weird things
+	# Check for simple strip
+	if { [string first $cwd $path] == 0 } {
+		return [string range $path [string length $cwd]+1 end]
+	}
+
+	set pathcomp [file split $path]
+
+	# Find split point
+	set len [llength $localcomp]
+	for {set i 0} {$i < $len} {incr i} {
+		if { [lindex $localcomp $i] != [lindex $pathcomp $i] } {
+			break
+		}
+	}
+
+	#puts stderr "PWD: $localcomp"
+	#puts stderr "PTH: $pathcomp"
+	#puts stderr "Mismatch at \[$i\]"
+
+	# Strip common prefix
+	set furthercomp [lrange $localcomp $i end]
+	set pathcomp [lrange $pathcomp $i end]
+
+	set updir [lrepeat [llength $furthercomp] ..]
+	set comp [concat $updir $pathcomp]
+
+	return [file join {*}$comp]
+}
+
+lassign $argv targetloc linkloc
+
+if { $linkloc == "" } {
+	puts stderr "Usage: lns <link-target-location> <link-location>"
+	exit 1
+}
+
+# Dest is the link file to be created
+# Source is the location that this link should point to
+# So first need to globalize the location
+
+# First normalize both
+set linkloc [file normalize $linkloc]
+set targetloc [file normalize $targetloc]
+
+set linkdir [file dirname $linkloc]
+set linkfile [file tail $linkloc]
+
+#puts "Setting $targetloc to be relative to $linkdir"
+set targetloc [localize $linkdir $targetloc]
+#puts " --> $targetloc"
+
+cd $linkdir
+file link -s $linkfile $targetloc
+puts stderr "$linkdir/$linkfile -> $targetloc"
+
+
