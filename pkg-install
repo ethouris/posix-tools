@@ -9,6 +9,7 @@ set tmpdir /var/tmp/pkg-install
 set extractor(.gz) {tar xfz}
 set extractor(.bz2) {tar xfj}
 set extractor(.lzma) {tar xf --lzma}
+set extractor(.xz) {tar xfJ}
 
 # First check existence in pkg-config
 

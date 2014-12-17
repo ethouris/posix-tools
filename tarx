@@ -8,5 +8,20 @@ proc runecho args {
 	exec 2>@stderr >@stdout {*}$args
 }
 
-runecho tar "--use-compress-program=[string range [file extension $filename] 1 end]" -xf {*}$options $filename
+set extmap {
+	gz gzip
+	bz2 bzip2
+	lz lzma
+	lzma lzma
+	Z compress
+	xz xzip
+}
+
+proc cprog filename {
+	set ext [string range [file extension $filename] 1 end]
+	
+	return [dict get $::extmap $ext]
+}
+
+runecho tar "--use-compress-program=[cprog $filename]" -xf {*}$options $filename
 
