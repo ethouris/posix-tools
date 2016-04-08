@@ -1,17 +1,17 @@
 Posix tools
 ===========
 
-==== carve
+#### carve
 
 Same as 'cut', but it can also take negative ranges to count from the end. It works only for words separated by spaces.
 
 E.g.: `echo statement | carve 1--4` results in `state`.
 
-==== finddup.tcl
+#### finddup.tcl
 
 Find duplicates of files (same size is checked first, then also contents).
 
-==== gcc-msg-filter.tcl
+#### gcc-msg-filter.tcl
 
 This interprets messages from gcc and changes the way how errors are reported from a cascade of includes.
 The gcc reports in the following form:
@@ -28,14 +28,14 @@ This changes it into something that editors can interpret and make it jump into 
     file3.h:5: from here
     file.cc:10: error: <error message>
 
-==== ldd3
+#### ldd3
 
 The "ldd tree" tool. It shows the dynamic libraries required by the executable in a form of tree.
 This is useful if you can see one library being included unexpectedly in two different versions
 and you want to know, which of the dependent libraries has included another dependent library,
 which was requesting incorrectly this library.
 
-==== ldreorder.tcl
+#### ldreorder.tcl
 
 Takes a link command for gcc and interprets all occurrences of static libraries. These libraries
 are then analyzed as to which is using which's symbols and then libraries are reordered so that
@@ -44,18 +44,18 @@ they can be linked without linker errors.
 Linker errors occur, when the symbol provider precedes symbol requirer. Happens only for static
 libraries. 
 
-==== lns
+#### lns
 
 Just like `ln -s`, but it works correcly with the relative paths in arguments and alwys
 creates the link target as relative.
 
-==== nm-unified
+#### nm-unified
 
 Reads multiple `*.o` files from the arguments, does `nm` on each of that and outputs everything
 just as if all `*.o` files were contents of an archive with path `/.a`. This may be needed sometimes
 for `nma.tcl` to help it properly interpret the `nm` output.
 
-==== nma.tcl
+#### nma.tcl
 
 An `nm` on steroids: it reads multiple object or library files, extracts the symbols from them,
 and tries to match them to each other, then displays it possibly with additional information.
@@ -68,80 +68,81 @@ Minimum:
     X:SYMBOLNAME
 
 Maximum:
+
 	X*(PROVIDER):SYMBOLNAME -> REQUESTER
 
 Where:
 * initial X is the one-letter flag for this symbol as provided by `nm` (see `man nm` for explanation)
 * If followed by `*`, it means that the symbol is both provided and required by the provider
-* Optional (PROVIDER) is added with -f option, it's the list of filenames that provide this symbol
-* SYMBOLNAME is the name of the symbol, filtered by c++filt (use -raw option to prevent it)
+* Optional `(PROVIDER)` is added with -f option, it's the list of filenames that provide this symbol
+* `SYMBOLNAME` is the name of the symbol, filtered by c++filt (use -raw option to prevent it)
 * Optional `-> REQUESTER` shows the libraries where this symbol occurred as undefined and it was matched with it (available with -l option)
 
-==== pkg-config-install
+#### pkg-config-install
 
 A replacement for pkg-config, does the same as pkg-config, unless the packet isn't installed, in
 which case it tries to install it using `pkg-install` (see below).
 
-==== pkg-find-mapping
+#### pkg-find-mapping
 
 Tries to find a mapping that can resolve the package provider for given package.
 
-==== pkg-install
+#### pkg-install
 
 Tries to install a package by the name provided by pkg-config. The package is considered provided,
 if pkg-config says so. If not (lacking *.pc file), then it tries to find *.pd file that would contain
 information about how to make this package installed. It tries also to get information about how
 to install the packet from `pkg-find-mapping`.
 
-==== run-winapp
+#### run-winapp
 
 This is for Cygwin only. It recognizes the command line that should point to a Cygwin path and
 runs given application with arguments where Cygwin path has been translated into Windows path.
 
-==== sc-checkin.tcl
+#### sc-checkin.tcl
 
 This is a very simple, primitive, current-dir-only kind-of version control tool. It uses path
 syntax similar to ClearCase: uses `@@` added to the filename
 
-==== tarx
+#### tarx
 
 A wrapper for `tar x`, which recognizes the compress program from the archive filename suffix.
 
-==== tcl
+#### tcl
 
 A command that executes and prints the results of a Tcl command, using tclsh interpreter.
 
-==== tclml
+#### tclml
 
 An interpreter of a simple markup language using Tcl command syntax.
 
-==== trename
+#### trename
 
 A Tk wrapper for rename functionality. Requires one argument, the name of the file to be renamed.
 It opens a simple editor to edit the target filename.
 
-==== typereal.tcl
+#### typereal.tcl
 
 Resolves symbolic links recursively and shows the complete path from the given link to a
 real filename, which is the ultimate target of the link connections.
 
-==== uname-a
+#### uname-a
 
 Extracts all possible options from `uname` command, then displays the use of `uname` with every
 possible option.
 
-==== xml-as-tcl.tcl
+#### xml-as-tcl.tcl
 
 Translates XML file into a simplified Tcl list syntax.
 
-==== yk.tcl
+#### yk.tcl
 
 Utility for `yakuake`, which reads the current configuration. It was used to restore the previous
 `yakuake` session. Now it doesn't work automatically (that is, from cron, for
 example) due to unavailable dcop connection information, however still works when run
 manually from command line.
 
-==== ysess-store
+#### ysess-store
 
 Helper for `yk.tcl`, tries to grab the information about the current `yakuake` session.
 
