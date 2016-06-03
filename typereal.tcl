@@ -1,4 +1,4 @@
-#!/usr/bin/tclsh8.5
+#!/usr/bin/tclsh
 
 if { $argv == "" } {
     puts stderr "Usage: [file tail $argv0] <command or file>"
