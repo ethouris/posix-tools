@@ -101,15 +101,27 @@ proc main {argc argv} {
 		}
 
 		lassign [parse-libraries $cmdline] dirs libs cmdline
+
+		set libfiles ""
+		foreach w $cmdline {
+			if { ![string match -* $w] && [file exists $w] } {
+				lappend libfiles $w
+			}
+		}
+
 		set cmdline [string map [list "\\\"" "\""] $cmdline]
 
 		set libraries [find-libraries $dirs $libs]
+		lappend libraries {*}$libfiles
 		puts stderr "Libraries being considered:"
 		puts stderr $libraries
 
 		write stderr "Extracting symbols... "
 		nm::extract_symbols $libraries
-		puts stderr "done."
+		puts stderr "\n... symbols from [array size nm::symbollist] libraries extracted:"
+		foreach s [array names nm::symbollist] {
+			puts stderr "$s: $nm::symbollist($s)"
+		}
 
 		variable children
 		variable parents
@@ -187,7 +199,7 @@ proc generate-edges {library} {
 	variable children
 	logn "GENERATING EDGES([file tail $library]): "
 	if { [get children($library)] == "" } {
-		#log "(nothing)"
+		log "(nothing)"
 		return ""
 	}
 	foreach c $children($library) {
@@ -200,7 +212,23 @@ proc generate-edges {library} {
 }
 
 proc reorder-libraries {dirs libs libraries} {
-	set edges [concat {*}[lforeach l $libraries { return [generate-edges $l] }]]
+
+	set edges ""
+	foreach l $libraries {
+		set ee [generate-edges $l]
+		set oo ""
+		foreach e $ee {
+			if { [lsearch -index 1 $edges [lindex $e 0]] != -1 } {
+				logn "(dropping cycle: $e) "
+				continue
+			}
+			lappend oo $e
+		}
+
+		lappend edges {*}$oo
+	}
+
+	#set edges [concat {*}[lforeach l $libraries { return [generate-edges $l] }]]
 	log "EDGES:\n[lforeach e $edges { lassign $e a b; return [list [file tail $a] [file tail $b]] }]"
 	set edges [join $edges \n]
 	set fail [catch {exec tsort 2>@stderr << $edges} sorted]

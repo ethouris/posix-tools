@@ -91,9 +91,21 @@ proc extract_symbols {libs} {
 				puts stderr "WARNING: $lib: not found, removing from arguments"
 				continue
 			}
+
+			if { !$analyze_sequential } {
+				puts stderr "PROBING LIBRARY: $lib"
+			}
 			set err [catch {exec nm $lib 2>@1} nmout]
 			if { $analyze_sequential } {
 				puts stderr "NOTE COMMAND: nm $lib"
+			} else {
+				if { $err != 0 } {
+					puts stderr "ERROR: $nmout"
+				} else {
+					foreach line [split $nmout \n] {
+						#puts stderr "OUTPUT: $line"
+					}
+				}
 			}
 			if { [string match "*no symbols*" $nmout] && "-D" ni $args } {
 				if { !$force_dynamic || $analyze_sequential } {
@@ -126,7 +138,7 @@ proc extract_symbols {libs} {
 				set args "-D $args"
 			}
 
-			puts stderr "NOTE COMMAND: nm $args"
+			puts stderr "NOTE COMMAND: <nm $args>"
 			set err [catch {exec nm {*}$args 2>@1} nmout]
 		} else {
 			set nmout $nmoutall
