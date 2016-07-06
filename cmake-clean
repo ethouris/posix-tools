@@ -27,7 +27,7 @@ if { [file exists CMakeCache.txt] } {
 	}
 }
 
-if { [file exists $topdir/CMakeCache.txt] } {
+if { $topdir != "" && $topdir != [pwd] && [file exists $topdir/CMakeCache.txt] } {
 	puts " ****** WARNING ********* "
 	puts "*** Found cmake build files in toplevel directory: $topdir"
 	puts "*** Your cmake call here will reuse it, instead of recreating the build files here."
