@@ -1,0 +1,44 @@
+#!/usr/bin/tclsh
+
+# Start with the current directory and see if you have CMakeCache.txt
+
+set cmakefiles {
+	CMakeCache.txt
+	CMakeFiles
+	cmake_install.cmake
+	Makefile
+}
+
+set topdir ""
+
+if { [file exists CMakeCache.txt] } {
+	# Load the cache and look for the toplevel directory.
+	set fd [open CMakeCache.txt r]
+
+	#CMAKE_HOME_DIRECTORY:INTERNAL=/home/sektor/repos/srt.stable
+	set lines [split [read $fd] \n]
+	close $fd
+	foreach l $lines {
+		set value [join [lassign [split $l =] key] =]
+		if { $key == "CMAKE_HOME_DIRECTORY:INTERNAL" } {
+			set topdir $value
+			break
+		}
+	}
+}
+
+if { [file exists $topdir/CMakeCache.txt] } {
+	puts " ****** WARNING ********* "
+	puts "*** Found cmake build files in toplevel directory: $topdir"
+	puts "*** Your cmake call here will reuse it, instead of recreating the build files here."
+	puts "*** Do clean also in there, if necessary."
+}
+
+if { [file exists Makefile] } {
+	catch {exec >@stdout 2>@stderr make clean}
+}
+
+foreach e $cmakefiles {
+	file delete -force $e
+}
+
