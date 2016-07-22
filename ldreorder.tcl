@@ -109,6 +109,11 @@ proc main {argc argv} {
 			}
 		}
 
+		if { $::tcl_platform(machine) == "x86_64" } {
+			lappend dirs /lib64 /usr/lib64
+		}
+		lappend dirs /lib /usr/lib
+
 		set cmdline [string map [list "\\\"" "\""] $cmdline]
 
 		set libraries [find-libraries $dirs $libs]
@@ -119,8 +124,17 @@ proc main {argc argv} {
 		write stderr "Extracting symbols... "
 		nm::extract_symbols $libraries
 		puts stderr "\n... symbols from [array size nm::symbollist] libraries extracted:"
+		if { [catch {set fd [open ldreorder.symbols w]}] } {
+			set fd ""
+		}
 		foreach s [array names nm::symbollist] {
 			puts stderr "$s: $nm::symbollist($s)"
+			if { $fd != "" } {
+				puts $fd "$s: $nm::symbollist($s)"
+			}
+		}
+		if { $fd != "" } {
+			close $fd
 		}
 
 		variable children
@@ -225,6 +239,7 @@ proc reorder-libraries {dirs libs libraries} {
 			lappend oo $e
 		}
 
+		puts "ADDING TO SORT: $oo"
 		lappend edges {*}$oo
 	}
 
@@ -239,14 +254,31 @@ proc reorder-libraries {dirs libs libraries} {
 		set libraries [lrange $libraries 0 end-1]
 	}
 
-	set ldflags [lforeach d $dirs {return -L$d}]
-	set libtol { return -l[string range [file rootname [file tail $l]] 3 end] }
+	set sysdirs {/lib /lib64 /usr/lib /usr/lib64}
+	set ldirs ""
+	foreach d $dirs {
+		if { $d in $sysdirs } {
+			continue
+		}
+		lappend ldirs $d
+	}
+
+	set ldflags [lforeach d $ldirs {return -L$d}]
+	set libtol {
+		set tname [file tail $l]
+		set lname [file rootname $tname]
+		#puts "LIBNAME: $l --> $tname --> $lname"
+		return -l[string range $lname 3 end]
+	}
 	lappend ldflags {*}[lforeach l $libraries $libtol]
 
 	# Now add libraries that haven't been found between dependencies
 	set libnames [lforeach l $libraries { return [file tail $l] }]
 	foreach lib $libs {
 		if { $lib ni $libnames } {
+			if { [file extension $lib] ni {.so .a} } {
+				set lib $lib.so
+			}
 			log "Adding $lib -- not found in dependent package"
 			lappend ldflags [apply [list l $libtol] $lib]
 		}
@@ -300,7 +332,7 @@ proc find-libraries {dirs libs} {
 			}
 		}
 		if { !$found } {
-			puts stderr "Library not found: $l"
+			puts stderr "Library not found: $l (.a or .so)"
 		}
 	}
 
@@ -319,6 +351,7 @@ proc parse-libraries {cmdline} {
 	set dirs {}
 	set libs {}
 	set others {}
+	puts "Parsing libraries:"
 	foreach a $cmdline {
 		switch -glob -- $a {
 			-L* {
@@ -326,16 +359,20 @@ proc parse-libraries {cmdline} {
 				if { !([file exists $dir] && [file isdir $dir]) } {
 					puts stderr "Note: directory does not exist: $a"
 				} else {
+					puts "... $a --> [file normalize $dir]"
 					lappend dirs [file normalize $dir]
 				}
 			}
 
 			-l* {
-				lappend libs lib[string range $a 2 end]
+				set n lib[string range $a 2 end]
+				puts "... $a --> $n"
+				lappend libs $n
 			}
 
 			default {
 				lappend others $a
+				puts "... $a --> treating as file path or something else"
 			}
 		}
 	}
