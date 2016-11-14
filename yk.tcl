@@ -5,6 +5,8 @@
 ### Utility
 ### This is a simple version, does not handle properly!
 
+set defaultwd $::env(HOME)
+
 proc pipe args {
 	set __this_arg ""
 	foreach __this_cmd $args {
@@ -93,17 +95,20 @@ proc ysessions {} {
 			return
 		}
 		if { $pidchain != "" } {
-			#puts stderr "Getting command for the last pid of: $pidchain"
+			#puts stderr "Getting command for the last pid of: $pidchain ($pid - $fgpid):"
 			set cmdtostart [expr {
 				[catch {exec ps -o command= [lindex $pidchain end]} cts]
 					? "" : $cts }]
+			#puts stderr "...: $cmdtostart"
 		} else {
 			set cmdtostart ""
 		}
 		# Take just the next command 
 		set is_fg [expr {$pid == $fgpid }]
 		set is_active [expr {$sid == $activesess}]
-		set pxwd [pipe {exec pwdx $pid} {split $- :} {lindex $- 1} {string trim $-}]
+		if { [catch {set pxwd [pipe {exec pwdx $pid} {split $- :} {lindex $- 1} {string trim $-}]}] } {
+			set pxwd $::defaultwd
+		}
 		if { [string index $pxwd 0] != "/" } {
 			set pxwd ""
 		}
@@ -216,6 +221,6 @@ switch -- [lindex $argv 0] {
 	}
 
 	default {
-		puts "Usage: [file tail $argv0] [-l|-s] <session file>"
+		puts "Usage: [file tail $argv0] \[-l|-s\] <session file>"
 	}
 }

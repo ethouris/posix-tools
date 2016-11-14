@@ -78,6 +78,17 @@ Where:
 * `SYMBOLNAME` is the name of the symbol, filtered by c++filt (use -raw option to prevent it)
 * Optional `-> REQUESTER` shows the libraries where this symbol occurred as undefined and it was matched with it (available with -l option)
 
+Symbol PROVIDER is shown in the form dependent on the file format. If this is a `*.so` library,
+or single `*.o` file, it will be shown as is. If this was an `*.a` library, it will show this
+file followed by `:` and the name of the `*.o` file inside the library. If it happened that this
+was a "false archive" (that is, `*.o` file falsely named as `*.a`), it will show something
+like `lib.a::o`.
+
+Summary options:
+* -f: display symbol providers
+* -l: display symbol requesters
+* -raw: don't filter names through c++filt
+
 #### pkg-config-install
 
 A replacement for pkg-config, does the same as pkg-config, unless the packet isn't installed, in

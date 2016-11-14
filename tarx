@@ -14,7 +14,7 @@ set extmap {
 	lz lzma
 	lzma lzma
 	Z compress
-	xz xzip
+	xz xz
 }
 
 proc cprog filename {
