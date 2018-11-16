@@ -1,0 +1,64 @@
+#!/usr/bin/tclsh
+
+# This tool can be used to complete a string comprising a list of paths
+# separated by colon, such as the PATH environment variable. For example,
+# if you want to add your $HOME/.local/bin path to your PATH variable, use
+# the following:
+
+# PATH=`add-path $PATH $HOME/.local/bin`
+
+# What makes it different to "PATH=$HOME/.local/bin:$PATH" is that it will
+# never leave a loose : in the value and will never add given path multiple times.
+
+set args [lassign $argv pathcontainer]
+
+if { $pathcontainer == "" } {
+	puts stderr "Usage: [file tail $argv0] <existing-pathcontainer> <path-to-add>..."
+	puts stderr "Options:"
+	puts stderr "\t--end: put given paths at the end of list (lower priority)\n"
+	puts stderr "(The resulting path is printed on stdout)"
+	exit 1
+}
+
+# Supported flags
+set flags(--end) 0
+
+foreach a $args {
+	if { [string match --* $a] } {
+		set flags($a) 1
+	} else {
+		lappend newpaths $a
+	}
+}
+
+set atend $flags(--end)
+
+set pathitems [split $pathcontainer :]
+
+# Make the path unique in the first place
+
+set target ""
+foreach p $pathitems {
+	if { [lsearch $target $p] != -1 } {
+		continue
+	}
+
+	lappend target $p
+}
+
+set pathitems $target
+
+# Ok, let's add the paths now
+
+foreach p $newpaths {
+	if { [lsearch $pathitems $p] == -1 } {
+		if { $atend } {
+			lappend pathitems $p
+		} else {
+			set pathitems [linsert $pathitems 0 $p]
+		}
+	}
+}
+
+puts [join $pathitems :]
+
