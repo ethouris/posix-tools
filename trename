@@ -41,7 +41,19 @@ proc do_rename {} {
 		exit 0
 	}
 
-	file rename $::filename $new_name
+	set options ""
+	if { [file exists $new_name] } {
+		if { [tk_dialog .ask "Rename overwrite warning" "File '$new_name' exists, do you want to overwrite it?" "" 0 Skip Overwrite] == 0 } {
+			puts "Renaming cancelled"
+			exit 0
+		}
+		set options -force
+	}
+
+	if { [catch {file rename {*}$options $::filename $new_name} res] } {
+		puts "ERROR: $res"
+		exit 1
+	}
 	puts "Renamed '$::filename' to '$new_name'"
 	exit 0
 }

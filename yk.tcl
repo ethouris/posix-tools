@@ -7,6 +7,23 @@
 
 set defaultwd $::env(HOME)
 
+set qdbus_loc {qdbus qdbus-qt5}
+
+set qdbus ""
+
+foreach q $qdbus_loc {
+	if {[auto_execok $q] != ""} {
+		set qdbus $q
+		break
+	}
+}
+
+if {$qdbus == ""} {
+	puts stderr "ERROR: qdbus not found among: $qdbus_loc. Please install."
+	exit 1
+}
+
+
 proc pipe args {
 	set __this_arg ""
 	foreach __this_cmd $args {
@@ -36,7 +53,7 @@ proc range args {
 }
 
 proc y {args} {
-	return [exec qdbus org.kde.yakuake {*}$args]
+	return [exec $::qdbus org.kde.yakuake {*}$args]
 }
 
 proc yl {object args} {
@@ -117,9 +134,10 @@ proc ysessions {} {
 			active $is_active
 			cwd "$pxwd"
 			cmd [list $cmdtostart]
-			debug-sessionid $sid
-			debug-pid $pid
 		} ]
+			#debug-sessionid $sid
+			#debug-pid $pid
+			# ]
 	}
 	# blocked: debug-fgpid $fgpid
 
@@ -215,7 +233,7 @@ switch -- [lindex $argv 0] {
 			set sx [read $fd]
 			close $fd
 			if { $sx == $sy } {
-				file delete -force $fname.$abg
+				catch {file delete -force $fname.$abg}
 			}
 		}
 	}
