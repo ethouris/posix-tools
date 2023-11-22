@@ -10,6 +10,7 @@ proc runecho args {
 
 set extmap {
 	gz gzip
+	tgz gzip
 	bz2 bzip2
 	lz lzma
 	lzma lzma

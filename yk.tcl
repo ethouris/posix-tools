@@ -220,6 +220,15 @@ switch -- [lindex $argv 0] {
 			}
 			file rename $fname $fname.$abg
 		}
+
+		# Check if yakuake is running. We don't want to store sessions
+		# of yakuake that isn't running.
+		set noyk [catch {exec pidof yakuake} ypid]
+		if {$noyk} {
+			puts "No yakuake running"
+			exit 1
+		}
+
 		set ystore [ysessions]
 		if { [string trim $ystore] == "" } exit
 		set fd [open $fname w]

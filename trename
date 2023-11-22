@@ -23,6 +23,10 @@ frame .b
 button .b.ok -text "Ok" -command do_rename
 button .b.cancel -text "Cancel" -command exit
 
+font create DisplayNameFont {*}[font configure TkFixedFont]
+font configure DisplayNameFont -size -20
+.e configure -font DisplayNameFont
+
 bind .e <Key-Return> do_rename
 bind .e <Key-Escape> exit
 

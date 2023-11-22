@@ -1,5 +1,8 @@
 #!/usr/bin/tclsh
 
+# Usage in vim:
+# let shellpipe="2>&1 | gcc-msg-filter.tcl | tee"
+
 set pt_included {(In file included from) ([^:]+):([0-9]+)}
 set pt_continued {^(\s*from) ([^:]+):([0-9]+)}
 set pt_normal {^()([^:]+):([0-9]+):}

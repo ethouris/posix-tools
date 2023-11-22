@@ -150,6 +150,10 @@ proc extract_symbols {libs} {
 
 	puts -nonewline stderr "NOTE: counting all lines for analysis... "
 	set lns [exec wc -l << $nmout]
+	if {$lns == 0} {
+		puts stderr "WARNING: nm returned no symbols"
+		return
+	}
 	puts stderr ""
 
 	set objfile "o"
@@ -271,6 +275,8 @@ if { !$::nm__use_as_library } {
 		puts stderr "\t-f - show the exact file where the symbol was defined (if it was)"
 		puts stderr "\t-l - for every symbol show also files from where the symbol was requested"
 		puts stderr "\t-raw - do not use c++filt to resolve mangled C++ symbols"
+		puts stderr "\t-s - analyze every symbol file separately"
+		puts stderr "\t-r - read output from nm command from standard input"
 		exit 1
 	}
 
