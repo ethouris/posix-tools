@@ -18,6 +18,8 @@ if { ![file exists $filename] } {
 	exit 1
 }
 
+set command [lindex $argv 1]
+
 entry .e
 frame .b
 button .b.ok -text "Ok" -command do_rename
@@ -54,7 +56,14 @@ proc do_rename {} {
 		set options -force
 	}
 
-	if { [catch {file rename {*}$options $::filename $new_name} res] } {
+	if {$::command != ""} {
+		set er [catch {exec {*}$::command $::filename $new_name} res]
+		if {$er} {
+			puts "ERROR: $res"
+			exit 1
+		}
+		puts $res
+	} elseif { [catch {file rename {*}$options $::filename $new_name} res] } {
 		puts "ERROR: $res"
 		exit 1
 	}
