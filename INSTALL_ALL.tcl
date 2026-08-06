@@ -78,6 +78,29 @@ if { ![file isdirectory $prefix] } {
 	exit 1
 }
 
+# Check if non-script (binary) tools are compiled.
+set sources [glob -nocomplain src/*.cc]
+
+set exesuf ""
+if {[info exists ::tcl_platform(os)] && [string match CYGWIN_NT* $::tcl_platform(os)]} {
+	set exesuf ".exe"
+}
+
+set missing ""
+set binaries ""
+foreach s $sources {
+	set b [file tail [file rootname $s]]$exesuf
+	if { ![file exists $b] } {
+		lappend missing $b
+	} else {
+		lappend binaries $b
+	}
+}
+
+if {$missing != ""} {
+	puts "WARNING: Binary tools not compiled: $missing"
+	puts "If you want them, cd to src/ and type 'make'"
+}
 
 set TOOLS [glob {[a-z]*}]
 set WD [pwd]
@@ -89,32 +112,22 @@ set nuptodate 0
 set noverwritten 0
 set ndenied 0
 
+# This procedure returns the same as [file type] except
+# if the file doesn't exist, returns "none" instead of throwing an error.
+proc file-type-nocomplain tool {
+	if { [catch {file type $tool} ft] } {
+		return
+	}
+	return $ft
+}
 
 foreach tool $TOOLS {
 
 	set path [file join $WD $tool]
 	set tarpath [prelocate $path [pwd]]
 
-	# This could be also a symbolic link to a nonexistent file.
-	# There's no way to check that in Tcl because [file exists] will
-	# always return 0 for such link, and there's also no [file islink].
-	# There's one method to check it: check if the file is a link, and
-	# catch the exception, which will be thrown when not even the link
-	# exists.
-	set notfound [catch {file type $tool} existtype]
-	set islink 0
-	set isdeadlink 0
-	if { !$notfound } {
-
-		# This will be set to true if the file is a symbolic link,
-		# which points to either EXISTING or NONEXIETING file.
-		set islink [expr {$existtype == "link"}]
-	}
-
-	#puts stderr "REPORT: '$tool' type '$existtype' failed:$notfound islink:$islink"
-
-	if { $islink || !$notfound } {
-		set type $existtype
+	set type [file-type-nocomplain $tool]
+	if { $type != "" } {
 
 		# Check if this is a symbolic link that points to a correct location.
 		# If so, silently ignore it.

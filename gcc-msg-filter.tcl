@@ -4,6 +4,7 @@
 # let shellpipe="2>&1 | gcc-msg-filter.tcl | tee"
 
 set pt_included {(In file included from) ([^:]+):([0-9]+)}
+set pt_inlined {inlined from}
 set pt_continued {^(\s*from) ([^:]+):([0-9]+)}
 set pt_normal {^()([^:]+):([0-9]+):}
 set pt_fileonly {^()([^:]+):()}
@@ -56,8 +57,18 @@ while 1 {
     } elseif { [regexp $pt_normal $entry 0 title file line ] } {
 		set lastfl "$file:$line"
 #  		puts stderr "+++DEBUG: entry unchanged: $title/$file/$line"
+	} elseif { [regexp $pt_inlined $entry] } {
+		# This is more complicated, regexp can't parse it correctly.
+		# parse manually
+		set atat [string first " at " $entry]
+		if {$atat != -1} {
+			set lastfl [string range $entry [expr {$atat+4}] end-1]
+			set entry "$lastfl: [string range $entry 0 [expr {$atat-1}]]"
+		}
+# 		puts stderr "+++INLINED MATCH 'inlined from'"
 	} elseif { [regexp $pt_fileonly $entry 0 title file line] } {
 		set lastfl "$file"
+#  		puts stderr "+++DEBUG: FILE ONLY $title/$file/$line"
     } else {
         #lappend heldup $entry
 		set lastfl "$file:$line"
