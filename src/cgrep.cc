@@ -7,7 +7,7 @@
 //
 // NOTES:
 //  - C++11 raw string literals are not handled properly
-//  - Lines and file are always printed (grep's -l option)
+//  - Lines and file are always printed (grep's -n option)
 //  - Option -w is handled like in grep
 //
 // SYNOPSIS:

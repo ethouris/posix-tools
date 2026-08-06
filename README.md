@@ -7,6 +7,16 @@ Same as 'cut', but it can also take negative ranges to count from the end. It wo
 
 E.g.: `echo statement | carve 1--4` results in `state`.
 
+### cgrep
+
+A 'grep'-like tool, which searches for a given phrase in the given files or
+standard input, skipping those found in the C/C++ comments or string values.
+Always works like grep with `-n` option (lists filename and line).
+
+Options:
+
+* -w : search whole words only
+
 #### finddup.tcl
 
 Find duplicates of files (same size is checked first, then also contents).
