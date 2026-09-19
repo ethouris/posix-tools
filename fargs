@@ -1,0 +1,239 @@
+#!/usr/bin/tclsh
+
+# Usage:
+# 
+#    fargs [options] "command line" args...
+#
+# OR:
+# 
+#    fargs [options] BRA command line with arguments KET args...
+# where: BRA and KET is any character except - or (
+# and for [ and { the KET is ] and }
+
+# 'fargs' is a tool intended to be similar for xargs, except that instead
+# of reading from stdin, it reads from the arguments and the command can be
+# specified with a pattern where the required argument is placed in a place of
+# the % marker.
+
+if {$argv == "" || $argv == "--help"} {
+	puts "Usage: [file tail $argv0] \[options\] <delimited-command-line> <args...>"
+	puts "Where:"
+	puts "  - <delimited-command-line>: BRA command line with args KET"
+	puts "  - BRA and KET is of your choice, {} and \[\] being pairs, except () and -"
+	puts "  - <args...> List of arguments for which the command line will be looped"
+	puts "Options:"
+	puts "  --c: sort arguments as for C/C++ source files (*.h precede *.c*)"
+	puts "  --1: put all arguments (after sorting) to the command line instead of looping"
+	puts "  --e: interrupt looping if the command resulted in error"
+	puts "  --f: show file information for every file when looping"
+	exit 1
+}
+
+# Arguments:
+
+# First if it is:
+# - a non-literal single character
+# It marks the terminal character.
+# NOTE: Bash won't allow u use parentheses
+# Also: can't use dash (-) because it's an argument marker
+#
+# Branckets and braces are handled.
+proc EndChar {c} {
+	return [string map {"\[" "\]" "\{" "\}"} $c]
+}
+
+# Otherwise it's a single word command to execute.
+
+# If the marker character is given, the end character ends
+# the command definition. Otherwise it's the first argument
+
+set sorting_method ""
+set looping 1
+set catch_error 0
+set show_fileinfo 0
+
+proc SortArglist_c {list} {
+	# This preserves the order, but if there are two
+	# sibling same names with different extensions, *.h goes first.
+
+	set prev ""
+	set output ""
+
+	foreach l $list {
+		if {$prev == ""} {
+			set prev "{$l}"
+			#puts "DEBUG: first item: $l"
+			continue
+		}
+
+		#puts "DEBUG: getting '$l' with prev=$prev"
+
+		set prevval [lindex $prev 0] ;# unpack
+
+		set prevname [file rootname $prevval]
+		set thisname [file rootname $l]
+
+		#puts "NAMES: this=$thisname prev=$prevname"
+
+		if {$prevname == $thisname} {
+			set thisx [file extension $l]
+			if {[regexp {\.[Hh].*} $thisx]} {
+				lappend output $l
+				#puts "DEBUG: flip: $l, prev: $prev"
+				continue
+			} else {
+				#puts "DEBUG: noflip, this.ext=$thisx"
+			}
+		}
+
+		# Nothing happend, so append the previous
+		lappend output $prevval
+		set prev "{$l}"
+		#puts "DEBUG: pass $prevval, prev: $prev"
+	}
+
+	if {$prev != ""} {
+		set prevval [lindex $prev 0]
+		#puts "DEBUG: adding last item: $prevval"
+		lappend output $prevval
+	}
+	return $output
+}
+
+proc bailout {msg} {
+	puts "ERROR: $msg"
+	exit 1
+}
+
+while 1 {
+
+	set first [lindex $argv 0]
+
+	if {[string range $first 0 1] == "--"} {
+		set option [string range $first 2 end]
+		if {$option == ""} {
+			bailout "Empty option"
+		}
+
+		switch -- $option {
+			c {
+				set sorting_method c
+			}
+
+			1 {
+				set looping 0
+			}
+
+			e {
+				set catch_error 1
+			}
+
+			f {
+				set show_fileinfo 1
+			}
+
+			default {
+				bailout "Unknown option: --$option"
+			}
+		}
+	} else {
+		break
+	}
+
+	set argv [lrange $argv 1 end]
+}
+
+set command ""
+
+if {[string length $first] == 1} {
+	if {$first in {- ( )}} {
+		bailout "Marker '$first' not allowed. Use a different character"
+	}
+
+	if {[regexp {[A-Za-z0-9_]} $first]} {
+		# single letter command
+		set command $first
+		set arglist [lrange $argv 1 end]
+	} else {
+		set endch [EndChar $first]
+		set endpos [lsearch -start 1 -exact $argv $endch]
+		if {$endpos == -1} {
+			bailout "End-marker '$endch' not found in the arguments"
+		} else {
+			set command [lrange $argv 1 $endpos-1]
+			set arglist [lrange $argv $endpos+1 end]
+		}
+	}
+} else {
+	set command $first
+	set arglist [lrange $argv 1 end]
+}
+
+set command [string trim $command]
+if {$command == ""} {
+	bailout "Command is empty"
+}
+
+if {[llength $arglist] == 0} {
+	bailout "No arguments"
+}
+
+# Check if the command has multiple args already; if so,
+# take the first word to check if it's a command.
+
+set cmdhead [lindex $command 0]
+set truecmd [auto_execok $cmdhead]
+
+if {$truecmd == ""} {
+	bailout "Command not found: '$cmdhead'"
+}
+
+if {$sorting_method != ""} {
+	set arglist [SortArglist_${sorting_method} $arglist]
+}
+
+proc runcmd {cmd} {
+	set err [catch {exec {*}$cmd >@stdout 2>@stderr} output]
+	if {!$::catch_error} {
+		return 1
+	}
+	if {$err} {
+		puts stderr "fargs: ***: $output"
+		puts stderr "fargs: ***: FROM '$cmd'"
+		return 0
+	}
+	return 1
+}
+
+if {$looping} {
+	set argpos [lsearch -exact $command %]
+	if {$argpos == -1} {
+		lappend command %
+		set argpos [expr {[llength $command]-1}]
+	}
+
+	#puts "DEBUG: COMMAND: '${command}'"
+	#puts "DEBUG: arg pos: $argpos"
+
+	foreach arg $arglist {
+		set xc $command
+		lset xc $argpos $arg
+		#puts [list EXEC: {*}$xc]
+		if {$show_fileinfo} {
+			puts stderr "fargs: ITEM: $arg"
+		}
+		if { ![runcmd $xc] } {
+			break
+		}
+	}
+} else {
+	set argpos [lsearch -exact $command %]
+	if {$argpos == -1} {
+		set xc [concat $command $arglist]
+	} else {
+		set xc [lreplace $command $argpos $argpos {*}$arglist]
+	}
+	runcmd $xc
+}
+
+
