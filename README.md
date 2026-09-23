@@ -17,6 +17,20 @@ Options:
 
 * -w : search whole words only
 
+#### core-cmp
+
+This tool should be used with the core file. It attempts to guess the core
+file's executable file (alternatively you can specify it as a second argument
+manually) and checks if the core file is more recent than the executable itself.
+It prints the report and sets the exit code, 0 if recent, -1 if stale. If the
+core file is proven to be stale (as long as the executable is correctly
+determined), the core file can be safely deleted, as it's of no use.
+
+#### fargs
+
+This is an improved version of `xargs` tool, although it only takes arguments
+from the command line. Run the program without options to get usage information.
+
 #### finddup.tcl
 
 Find duplicates of files (same size is checked first, then also contents).

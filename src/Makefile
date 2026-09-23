@@ -1,6 +1,8 @@
 
+CXX=g++
+
 cgrep: cgrep.cc
-	g++ $< -o $@
+	$(CXX) $< -o $@ -std=c++17
 	cp $@ ..
 	md5sum $@ >../$@.md5
 

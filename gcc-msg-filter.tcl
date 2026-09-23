@@ -10,6 +10,7 @@ set pt_normal {^()([^:]+):([0-9]+):}
 set pt_fileonly {^()([^:]+):()}
 set pt_deprecated_phrase_regexp {is deprecated \(declared at}
 set pt_deprecated_phrase_string {is deprecated (declared at}
+set pt_inlined {(inlined from .*) at ([^:]*):([0-9]+):([0-9]*)}
 
 set heldup {}
 
@@ -54,6 +55,9 @@ while 1 {
         set entry "$file:$line: $title here"
 		set lastfl "$file:$line"
 #  		puts stderr "+++DEBUG: entry changed to 'here'"
+    } elseif { [regexp $pt_inlined $entry 0 title file line col] } {
+		set entry "$file:$line:$col: $title"
+		set lastfl "$file:$line"
     } elseif { [regexp $pt_normal $entry 0 title file line ] } {
 		set lastfl "$file:$line"
 #  		puts stderr "+++DEBUG: entry unchanged: $title/$file/$line"

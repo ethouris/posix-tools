@@ -1,0 +1,102 @@
+#!/usr/bin/tclsh
+
+set corename [lindex $argv 0]
+
+if {$corename == ""} {
+	puts stderr "Usage: [file tail $argv0] <corefile> ?executable?"
+	exit 1
+}
+
+if {![file exists $corename]} {
+	puts stderr "File '$corename' does not exist"
+	exit 1
+}
+
+set execname [lindex $argv 1]
+
+set selfdet no
+if {$execname == ""} {
+
+	# Not an existing file, try with $(file)
+	set filest [exec file $corename]
+	set parts [split $filest ,]
+	if { [string first "core file" [lindex $parts 0]] == -1 } {
+		puts stderr "File '$corename' doesn't appear to be a core file. Check with 'file'"
+		exit 1
+	}
+	foreach p $parts {
+		set p [string trim $p]
+		set val [lassign $p label]
+		if {$label == "from"} {
+			# Do not take 'val' because it's likely incorrectly formatted.
+			# Simply skip "from" and trim.
+			set val [string trim [string range $p 5 end]]
+			set command $val
+			break
+		}
+	}
+	if { [string index $command 0] == "'" } {
+		if {[string index $command end] != "'"} {
+			puts stderr "WEIRD FROM: $command - check again with 'file'"
+			exit 1
+		}
+		set command [string range $command 1 end-1]
+	}
+	set execname [lindex $command 0]
+	if {[string range $execname 0 1] != "./"} {
+		# Not a local file, extract it from [type] command
+		set aexec [auto_execok $execname]
+		if {$aexec == ""} {
+			puts stderr "ERROR: '$execname' (from 'file' command): Can't determine the filename"
+			exit 1
+		}
+		set execname $aexec
+	}
+	puts stderr "EXEC: '$execname' (from 'file' command)"
+
+} else {
+	set command $execname
+}
+puts stderr "COMMAND: $command"
+
+if {![file exists $execname]} {
+	puts stderr "File '$execname' does not exist"
+	if {$selfdet} {
+		puts stderr "NOTE: Use `file $corename` to determine the executable"
+	}
+	exit 1
+}
+
+set coretime [file mtime $corename]
+set exectime [file mtime $execname]
+
+if {$coretime > $exectime} {
+	puts stderr "CORE is recent"
+	exit 0
+}
+
+proc timediff {earlier later} {
+
+	set out ""
+	set secdif [expr {$later - $earlier}]
+	if {$secdif < 0} {
+		set secdif [expr {-$secdif}]
+	}
+
+	if {$secdif > 60} {
+		set mindif [expr {$secdif / 60}]
+		if {$mindif > 60} {
+			set hrdif [expr {$mindif / 60}]
+			if {$hrdif > 24} {
+				return [expr {$hrdif / 24}]\ days
+			}
+			return ${hrdif}h
+		}
+		return ${mindif}min
+	}
+	return ${secdif}s
+}
+
+puts stderr "CORE IS STALE! (appeared [timediff $coretime $exectime] before exec)"
+exit 1
+
